@@ -1,3 +1,4 @@
+// Modified for Railway owner-password authentication.
 import type { ListWeixinInstallationsResponse, WeixinLogin } from "../types/weixin";
 import { ListWeixinInstallationsSchema, WeixinLoginSchema, EMPTY_WEIXIN_INSTALLATIONS, INVALID_WEIXIN_LOGIN } from "../weixin/schema";
 import type { ZodType } from "zod";
@@ -1156,6 +1157,13 @@ export class ApiClient {
     return this.fetch("/auth/verify-code", {
       method: "POST",
       body: JSON.stringify({ email, code }),
+    });
+  }
+
+  async passwordLogin(email: string, password: string): Promise<LoginResponse> {
+    return this.fetch("/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
     });
   }
 

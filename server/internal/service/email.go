@@ -1,3 +1,5 @@
+// Modified for Railway owner-password authentication.
+
 package service
 
 import (
@@ -248,6 +250,12 @@ func NewEmailService() *EmailService {
 		smtpTLSImplicit: smtpTLSImplicit,
 		smtpEHLOName:    smtpEHLOName,
 	}
+}
+
+// DeliveryConfigured reports whether a real email backend (SMTP or Resend)
+// is configured, as opposed to the DEV stdout fallback.
+func (s *EmailService) DeliveryConfigured() bool {
+	return s != nil && (s.smtpHost != "" || s.client != nil)
 }
 
 // sendSMTP delivers an HTML email via an SMTP server.

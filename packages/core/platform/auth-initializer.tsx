@@ -1,4 +1,5 @@
 "use client";
+// Modified for Railway owner-password authentication.
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -77,6 +78,9 @@ export function AuthInitializer({
           workspaceCreationDisabled: cfg.workspace_creation_disabled === true,
           // Absent/false on the managed cloud and older servers → section hidden.
           vcsIntegrationAvailable: cfg.vcs_integration_available === true,
+          // Absent on older servers: no owner password, email sign-in on.
+          ownerPasswordLoginEnabled: cfg.owner_password_login_enabled === true,
+          emailLoginEnabled: cfg.email_login_enabled !== false,
         });
         // Legacy servers only publish both URLs for self-host. Explicit unknown
         // or malformed targets stay closed, and absent URLs never imply Cloud.
