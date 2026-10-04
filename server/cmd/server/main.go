@@ -1,3 +1,5 @@
+// Modified for Railway owner-password authentication.
+
 package main
 
 import (
@@ -26,6 +28,7 @@ import (
 	"github.com/multica-ai/multica/server/internal/logger"
 	"github.com/multica-ai/multica/server/internal/maintenance"
 	obsmetrics "github.com/multica-ai/multica/server/internal/metrics"
+	"github.com/multica-ai/multica/server/internal/ownerauth"
 	"github.com/multica-ai/multica/server/internal/profiling"
 	"github.com/multica-ai/multica/server/internal/realtime"
 	"github.com/multica-ai/multica/server/internal/scheduler"
@@ -387,6 +390,24 @@ func main() {
 	}
 	stopStartup()
 	slog.Info("connected to database")
+
+	// Owner email/password bootstrap runs before anything is served. The
+	// environment is consumed once and removed from this process; login only
+	// reads the durable owner_bootstrap row.
+	ownerEmail, ownerPassword := os.Getenv("MULTICA_OWNER_EMAIL"), os.Getenv("MULTICA_OWNER_PASSWORD")
+	os.Unsetenv("MULTICA_OWNER_EMAIL")
+	os.Unsetenv("MULTICA_OWNER_PASSWORD")
+	ownerResult, err := ownerauth.Bootstrap(context.Background(), pool, ownerEmail, ownerPassword)
+	if err != nil {
+		slog.Error("refusing to start: owner bootstrap failed", "error", err)
+		os.Exit(1)
+	}
+	logOwnerBootstrap(ownerResult, ownerEmail != "" || ownerPassword != "")
+	if ownerResult.Outcome == ownerauth.OutcomeOwnerCreated &&
+		strings.EqualFold(strings.TrimSpace(os.Getenv("APP_ENV")), "production") &&
+		os.Getenv("RESEND_API_KEY") == "" && strings.TrimSpace(os.Getenv("SMTP_HOST")) == "" {
+		slog.Info("owner-password mode: email sign-in codes are disabled (no RESEND_API_KEY/SMTP_HOST) and are never printed to the log; sign in with the owner email and password")
+	}
 	logPoolConfig("primary", pool)
 
 	// The replica is an optional capacity optimization, never a startup
@@ -939,4 +960,17 @@ func main() {
 		},
 	}.run()
 	slog.Info("server stopped")
+}
+
+func logOwnerBootstrap(res ownerauth.Result, envProvided bool) {
+	switch {
+	case res.Created && res.Outcome == ownerauth.OutcomeOwnerCreated:
+		slog.Info("owner account created; owner password sign-in enabled", "email", res.Email)
+	case res.Created && res.Outcome == ownerauth.OutcomeExistingData:
+		slog.Warn("MULTICA_OWNER_EMAIL/MULTICA_OWNER_PASSWORD ignored: database already has users or workspaces; owner password sign-in stays disabled")
+	case res.Outcome == ownerauth.OutcomeExistingData && envProvided:
+		slog.Warn("MULTICA_OWNER_EMAIL/MULTICA_OWNER_PASSWORD ignored: this database was not empty at bootstrap; owner password sign-in is disabled")
+	case res.Outcome == ownerauth.OutcomeOwnerCreated && envProvided:
+		slog.Info("owner already bootstrapped; MULTICA_OWNER_EMAIL/MULTICA_OWNER_PASSWORD ignored (they never change the stored credential)")
+	}
 }

@@ -1132,6 +1132,23 @@ type NotificationPreference struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+// Modified for Railway owner-password authentication. Durable singleton owner credential and bootstrap closure marker.
+type OwnerBootstrap struct {
+	Singleton    bool               `json:"singleton"`
+	Outcome      string             `json:"outcome"`
+	UserID       pgtype.UUID        `json:"user_id"`
+	Email        pgtype.Text        `json:"email"`
+	PasswordHash pgtype.Text        `json:"password_hash"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+// Modified for Railway owner-password authentication. Durable password-login rate limits.
+type OwnerPasswordLoginAttempt struct {
+	Bucket      string             `json:"bucket"`
+	WindowStart pgtype.Timestamptz `json:"window_start"`
+	Attempts    int32              `json:"attempts"`
+}
+
 type PersonalAccessToken struct {
 	ID          pgtype.UUID        `json:"id"`
 	UserID      pgtype.UUID        `json:"user_id"`

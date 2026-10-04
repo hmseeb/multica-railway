@@ -1,3 +1,4 @@
+// Modified for Railway owner-password authentication.
 import { createStore } from "zustand/vanilla";
 import { useStore } from "zustand";
 
@@ -40,12 +41,18 @@ interface ConfigState {
   // deleted the replies too, so absent must fail closed: the client then
   // promises nothing about replies and uses the legacy delete route.
   commentDeleteKeepRepliesSupported: boolean;
+  // Owner email/password sign-in is available. Absent on older servers: false.
+  ownerPasswordLoginEnabled: boolean;
+  // Email-code sign-in is available. Older servers always offered it: true.
+  emailLoginEnabled: boolean;
   setCdnConfig: (config: { cdnDomain: string; cdnSigned?: boolean }) => void;
   setAuthConfig: (config: {
     allowSignup: boolean;
     googleClientId?: string;
     workspaceCreationDisabled?: boolean;
     vcsIntegrationAvailable?: boolean;
+    ownerPasswordLoginEnabled?: boolean;
+    emailLoginEnabled?: boolean;
   }) => void;
   setDaemonConfig: (config: {
     daemonServerUrl?: string;
@@ -72,13 +79,25 @@ export const configStore = createStore<ConfigState>((set) => ({
   localWorktreeSupported: false,
   agentConversationStartersSupported: false,
   commentDeleteKeepRepliesSupported: false,
+  ownerPasswordLoginEnabled: false,
+  emailLoginEnabled: true,
   setCdnConfig: ({ cdnDomain, cdnSigned = false }) => set({ cdnDomain, cdnSigned }),
   setAuthConfig: ({
     allowSignup,
     googleClientId = "",
     workspaceCreationDisabled = false,
     vcsIntegrationAvailable = false,
-  }) => set({ allowSignup, googleClientId, workspaceCreationDisabled, vcsIntegrationAvailable }),
+    ownerPasswordLoginEnabled = false,
+    emailLoginEnabled = true,
+  }) =>
+    set({
+      allowSignup,
+      googleClientId,
+      workspaceCreationDisabled,
+      vcsIntegrationAvailable,
+      ownerPasswordLoginEnabled: ownerPasswordLoginEnabled === true,
+      emailLoginEnabled: emailLoginEnabled !== false,
+    }),
   setDaemonConfig: ({ daemonServerUrl = "", daemonAppUrl = "" }) =>
     set({ daemonServerUrl, daemonAppUrl }),
   setFeatureFlags: (flags = {}) => set({ featureFlags: { ...flags } }),

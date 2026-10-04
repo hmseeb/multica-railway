@@ -1,3 +1,5 @@
+// Modified for Railway owner-password authentication.
+
 package handler
 
 import (
@@ -98,6 +100,8 @@ var workspaceDeletionManifest = map[string]workspaceDeleteAction{
 	"agent_mcp_server":                   workspaceDelete,
 	"workspace_mcp_server":               workspaceDelete,
 	"notification_preference":            workspaceDelete,
+	"owner_bootstrap":                    workspaceDeleteKeep, // Instance-wide owner credential/bootstrap marker.
+	"owner_password_login_attempt":       workspaceDeleteKeep, // Instance-wide login attempt counters.
 	"personal_access_token":              workspaceDeleteKeep,
 	"pinned_item":                        workspaceDelete,
 	"plugin_installation":                workspaceDelete,

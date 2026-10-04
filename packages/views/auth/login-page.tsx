@@ -1,4 +1,5 @@
 "use client";
+// Modified for Railway owner-password authentication.
 
 import { useState, useEffect, useCallback, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -20,6 +21,7 @@ import {
   InputOTPSlot,
 } from "@multica/ui/components/ui/input-otp";
 import { useAuthStore } from "@multica/core/auth";
+import { useConfigStore } from "@multica/core/config";
 import { workspaceKeys } from "@multica/core/workspace/queries";
 import { api } from "@multica/core/api";
 import type { User } from "@multica/core/types";
@@ -84,11 +86,15 @@ export function validateCliCallback(cliCallback: string): boolean {
     if (cbUrl.protocol !== "http:") return false;
     const h = cbUrl.hostname;
     if (h === "localhost" || h === "127.0.0.1") return true;
-    // Allow RFC 1918 private IPs: 10.x.x.x, 172.16-31.x.x, 192.168.x.x
-    if (/^10\./.test(h)) return true;
-    if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
-    if (/^192\.168\./.test(h)) return true;
-    return false;
+    // Allow RFC 1918 private IPs: 10.x.x.x, 172.16-31.x.x, 192.168.x.x.
+    // Require a complete numeric IPv4 address: a prefix check alone would
+    // accept DNS names such as 10.attacker.example and leak the token.
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec(h);
+    if (!m) return false;
+    const octets = m.slice(1).map(Number);
+    if (octets.some((o) => o > 255)) return false;
+    const [a, b] = octets as [number, number, number, number];
+    return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168);
   } catch {
     return false;
   }
@@ -112,6 +118,12 @@ export function LoginPage({
   const [step, setStep] = useState<"email" | "code" | "cli_confirm">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  // Owner password deployments may also offer email codes as an alternative.
+  const [preferEmailCode, setPreferEmailCode] = useState(false);
+  const ownerPasswordEnabled = useConfigStore((s) => s.ownerPasswordLoginEnabled);
+  const emailLoginEnabled = useConfigStore((s) => s.emailLoginEnabled);
+  const passwordMode = ownerPasswordEnabled && !(preferEmailCode && emailLoginEnabled);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -237,6 +249,35 @@ export function LoginPage({
     },
     [email, onSuccess, cliCallback, onTokenObtained, qc, t],
   );
+
+  const handlePasswordLogin = async (e?: React.FormEvent) => {
+    e?.preventDefault();
+    if (!email || !password) return;
+    setLoading(true);
+    setError("");
+    try {
+      if (cliCallback) {
+        // CLI path: get token directly for the redirect URL
+        const { token } = await api.passwordLogin(email, password);
+        localStorage.setItem("multica_token", token);
+        api.setToken(token);
+        onTokenObtained?.();
+        redirectToCliCallback(cliCallback.url, token, cliCallback.state);
+        return;
+      }
+      await useAuthStore.getState().loginWithPassword(email, password);
+      const wsList = await api.listWorkspaces();
+      qc.setQueryData(workspaceKeys.list(), wsList);
+      onTokenObtained?.();
+      onSuccess();
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : t(($) => $.errors.password_failed),
+      );
+      setPassword("");
+      setLoading(false);
+    }
+  };
 
   const handleResend = async () => {
     if (cooldown > 0) return;
@@ -425,9 +466,11 @@ export function LoginPage({
           <CardTitle className="text-display-sm">
             {t(($) => $.signin.title)}
           </CardTitle>
-          <CardDescription>
-            {t(($) => $.signin.description)}
-          </CardDescription>
+          {!passwordMode && (
+            <CardDescription>
+              {t(($) => $.signin.description)}
+            </CardDescription>
+          )}
         </CardHeader>
         <CardContent className="space-y-4">
           {sessionExpired && (
@@ -437,7 +480,11 @@ export function LoginPage({
               </AlertDescription>
             </Alert>
           )}
-          <form id="login-form" onSubmit={handleSendCode} className="space-y-4">
+          <form
+            id="login-form"
+            onSubmit={passwordMode ? handlePasswordLogin : handleSendCode}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="login-email">{t(($) => $.common.email)}</Label>
               <Input
@@ -446,10 +493,26 @@ export function LoginPage({
                 placeholder={t(($) => $.common.email_placeholder)}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                autoComplete={passwordMode ? "username" : undefined}
                 autoFocus
                 required
               />
             </div>
+            {passwordMode && (
+              <div className="space-y-2">
+                <Label htmlFor="login-password">
+                  {t(($) => $.signin.password)}
+                </Label>
+                <Input
+                  id="login-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+            )}
             {error && (
               <p className="text-body text-destructive">{error}</p>
             )}
@@ -461,12 +524,32 @@ export function LoginPage({
             form="login-form"
             className="w-full"
             size="lg"
-            disabled={!email || loading}
+            disabled={!email || (passwordMode && !password) || loading}
           >
-            {loading
-              ? t(($) => $.signin.sending)
-              : t(($) => $.signin.continue)}
+            {passwordMode
+              ? loading
+                ? t(($) => $.signin.signing_in)
+                : t(($) => $.signin.submit)
+              : loading
+                ? t(($) => $.signin.sending)
+                : t(($) => $.signin.continue)}
           </Button>
+          {ownerPasswordEnabled && emailLoginEnabled && (
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full"
+              onClick={() => {
+                setPreferEmailCode(passwordMode);
+                setError("");
+              }}
+              disabled={loading}
+            >
+              {passwordMode
+                ? t(($) => $.signin.use_email_code)
+                : t(($) => $.signin.use_password)}
+            </Button>
+          )}
           {(google || onGoogleLogin) && (
             <Button
               type="button"

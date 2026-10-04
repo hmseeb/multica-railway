@@ -1,3 +1,5 @@
+// Modified for Railway owner-password authentication.
+
 package handler
 
 import (
@@ -121,6 +123,9 @@ type Config struct {
 	// frontend/CORS origin allowlist so split app/api self-hosted deployments
 	// can frame API-hosted PDFs without allowing arbitrary third-party frames.
 	AttachmentFrameAncestors []string
+	// AllowedOrigins is the browser origin allowlist (CORS_ALLOWED_ORIGINS /
+	// FRONTEND_ORIGIN) checked by owner password sign-in.
+	AllowedOrigins []string
 	// PluginSurfaceOrigin is the dedicated, cookie-free browser origin that
 	// routes /plugin-surfaces/* back to this server. It must not be the app/API
 	// origin: the route serves stored third-party JavaScript as HTML.

@@ -1,3 +1,5 @@
+// Modified for Railway owner-password authentication.
+
 package handler
 
 import (
@@ -307,6 +309,9 @@ func (h *Handler) SendCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "email is required")
 		return
 	}
+	if h.rejectUndeliverableEmailLogin(w, r) {
+		return
+	}
 	if auth.IsTemporarilyDisabledUserEmail(email) {
 		writeError(w, http.StatusForbidden, auth.TemporarilyDisabledUserError)
 		return
@@ -399,6 +404,9 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "email and code are required")
 		return
 	}
+	if h.rejectUndeliverableEmailLogin(w, r) {
+		return
+	}
 	if auth.IsTemporarilyDisabledUserEmail(email) {
 		writeError(w, http.StatusForbidden, auth.TemporarilyDisabledUserError)
 		return
@@ -440,34 +448,7 @@ func (h *Handler) VerifyCode(w http.ResponseWriter, r *http.Request) {
 		obsmetrics.RecordEvent(h.Analytics, h.Metrics, analytics.Signup(uuidToString(user.ID), user.Email, signupSourceFromRequest(r)))
 	}
 
-	tokenString, err := h.issueJWT(user)
-	if err != nil {
-		if errors.Is(err, auth.ErrTemporarilyDisabledUser) {
-			writeError(w, http.StatusForbidden, auth.TemporarilyDisabledUserError)
-			return
-		}
-		slog.Warn("login failed", append(logger.RequestAttrs(r), "error", err, "email", req.Email)...)
-		writeError(w, http.StatusInternalServerError, "failed to generate token")
-		return
-	}
-
-	// Set HttpOnly auth cookie (browser clients) + CSRF cookie.
-	if err := auth.SetAuthCookies(w, tokenString); err != nil {
-		slog.Warn("failed to set auth cookies", "error", err)
-	}
-
-	// Set CloudFront signed cookies for CDN access.
-	if h.CFSigner != nil {
-		for _, cookie := range h.CFSigner.SignedCookies(time.Now().Add(auth.AuthTokenTTL())) {
-			http.SetCookie(w, cookie)
-		}
-	}
-
-	slog.Info("user logged in", append(logger.RequestAttrs(r), "user_id", uuidToString(user.ID), "email", user.Email)...)
-	writeJSON(w, http.StatusOK, LoginResponse{
-		Token: tokenString,
-		User:  h.userToResponse(user),
-	})
+	h.writeLoginSuccess(w, r, user)
 }
 
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {

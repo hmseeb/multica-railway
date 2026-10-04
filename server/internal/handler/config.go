@@ -1,6 +1,9 @@
+// Modified for Railway owner-password authentication.
+
 package handler
 
 import (
+	"log/slog"
 	"net/http"
 	"net/url"
 	"os"
@@ -25,6 +28,12 @@ type AppConfig struct {
 	// toggle signup or wire Google OAuth.
 	AllowSignup    bool   `json:"allow_signup"`
 	GoogleClientID string `json:"google_client_id,omitempty"`
+	// OwnerPasswordLoginEnabled is true once this database was bootstrapped
+	// with an owner email/password (durable state, never the environment).
+	OwnerPasswordLoginEnabled bool `json:"owner_password_login_enabled"`
+	// EmailLoginEnabled is false only for owner-password production
+	// deployments without Resend/SMTP, where codes would go to stdout.
+	EmailLoginEnabled bool `json:"email_login_enabled"`
 	// WorkspaceCreationDisabled mirrors the server-side
 	// DISABLE_WORKSPACE_CREATION env var so the UI can hide every
 	// "Create workspace" affordance on self-hosted instances. Omitted
@@ -111,6 +120,12 @@ func (h *Handler) GetConfig(w http.ResponseWriter, r *http.Request) {
 		GoogleClientID:                     os.Getenv("GOOGLE_CLIENT_ID"),
 		WorkspaceCreationDisabled:          os.Getenv("DISABLE_WORKSPACE_CREATION") == "true",
 	}
+	_, ownerMode, err := h.ownerCredential(r.Context())
+	if err != nil {
+		slog.Warn("config: owner credential lookup failed", "error", err)
+	}
+	config.OwnerPasswordLoginEnabled = ownerMode
+	config.EmailLoginEnabled = h.emailLoginEnabled(ownerMode)
 	if h.Storage != nil {
 		config.CdnDomain = h.Storage.CdnDomain()
 	}
