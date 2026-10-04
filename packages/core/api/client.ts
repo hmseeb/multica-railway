@@ -1,3 +1,4 @@
+// Modified for Railway owner-password authentication.
 import type { ZodType } from "zod";
 import { AgentRuntimeSchema, EMPTY_RUNTIME } from "../runtimes/schema";
 import type { IssueWakeup, IssueWakeupInput, IssueWakeupSummaryRow, PausedWakeup, SystemWakeup, WakeupRun, WorkspaceSystemWakeup } from "../types/issue-wakeup";
@@ -999,6 +1000,13 @@ export class ApiClient {
     return this.fetch("/auth/verify-code", {
       method: "POST",
       body: JSON.stringify({ email, code }),
+    });
+  }
+
+  async passwordLogin(email: string, password: string): Promise<LoginResponse> {
+    return this.fetch("/auth/password", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
     });
   }
 

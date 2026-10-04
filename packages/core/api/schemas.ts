@@ -1,3 +1,4 @@
+// Modified for Railway owner-password authentication.
 import { z } from "zod";
 import { normalizeIssueStatusCategory } from "../issues/config/status";
 import type {
@@ -906,6 +907,12 @@ export interface AppConfigResponse {
    * too, so absent must be treated as false (#8296). */
   comment_delete_keep_replies_supported?: boolean;
   server_version?: string;
+  /** Owner email/password sign-in is available (durable server state). Older
+   * servers omit it: false. */
+  owner_password_login_enabled?: boolean;
+  /** Email-code sign-in is available. Older servers always offered it, so
+   * absent means true. */
+  email_login_enabled?: boolean;
 }
 
 // Schemas for the highest-risk API endpoints — those whose responses drive
@@ -1166,6 +1173,8 @@ export const AppConfigSchema = z.object({
   issue_create_properties_supported: BooleanWithDefaultSchema(false),
   comment_delete_keep_replies_supported: BooleanWithDefaultSchema(false),
   server_version: OptionalStringSchema,
+  owner_password_login_enabled: BooleanWithDefaultSchema(false),
+  email_login_enabled: BooleanWithDefaultSchema(true),
 }).loose();
 
 export const EMPTY_APP_CONFIG: AppConfigResponse = {
@@ -1187,6 +1196,8 @@ export const EMPTY_APP_CONFIG: AppConfigResponse = {
   issue_create_properties_supported: false,
   // Fail closed: old servers delete a comment's replies with it.
   comment_delete_keep_replies_supported: false,
+  owner_password_login_enabled: false,
+  email_login_enabled: true,
   feature_flags: {},
 };
 

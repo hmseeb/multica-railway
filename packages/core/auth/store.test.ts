@@ -1,3 +1,4 @@
+// Modified for Railway owner-password authentication.
 import { describe, expect, it, vi } from "vitest";
 import type { ApiClient } from "../api/client";
 import type { StorageAdapter, User } from "../types";
@@ -33,6 +34,39 @@ function makeApi(): ApiClient {
 }
 
 describe("authStore", () => {
+  it("password login persists the token in token mode", async () => {
+    const storage = makeStorage();
+    const api = {
+      setToken: vi.fn(),
+      passwordLogin: vi.fn().mockResolvedValue({ token: "tok", user: fakeUser }),
+    } as unknown as ApiClient;
+    const onLogin = vi.fn();
+    const store = createAuthStore({ api, storage, onLogin });
+
+    await expect(store.getState().loginWithPassword("alice@example.com", "pw")).resolves.toBe(fakeUser);
+
+    expect(api.passwordLogin).toHaveBeenCalledWith("alice@example.com", "pw");
+    expect(storage.snapshot().multica_token).toBe("tok");
+    expect(api.setToken).toHaveBeenCalledWith("tok");
+    expect(onLogin).toHaveBeenCalledOnce();
+    expect(store.getState().status).toBe("authenticated");
+  });
+
+  it("password login relies on cookies in cookie mode", async () => {
+    const storage = makeStorage();
+    const api = {
+      setToken: vi.fn(),
+      passwordLogin: vi.fn().mockResolvedValue({ token: "tok", user: fakeUser }),
+    } as unknown as ApiClient;
+    const store = createAuthStore({ api, storage, cookieAuth: true });
+
+    await store.getState().loginWithPassword("alice@example.com", "pw");
+
+    expect(storage.snapshot().multica_token).toBeUndefined();
+    expect(api.setToken).not.toHaveBeenCalled();
+    expect(store.getState().user).toBe(fakeUser);
+  });
+
   it("publishes a retry request instead of silently ignoring it", () => {
     const storage = makeStorage({ multica_token: "t" });
     const api = makeApi();

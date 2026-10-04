@@ -1,3 +1,5 @@
+// Modified for Railway owner-password authentication.
+
 package main
 
 import (
@@ -441,6 +443,7 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 		AttachmentDownloadMode:         os.Getenv("ATTACHMENT_DOWNLOAD_MODE"),
 		AttachmentDownloadURLTTL:       envDuration("ATTACHMENT_DOWNLOAD_URL_TTL", 30*time.Minute),
 		AttachmentFrameAncestors:       origins,
+		AllowedOrigins:                 origins,
 		PluginSurfaceOrigin:            strings.TrimRight(strings.TrimSpace(os.Getenv("MULTICA_PLUGIN_SURFACE_ORIGIN")), "/"),
 		LLMAPIKey:                      strings.TrimSpace(os.Getenv("MULTICA_LLM_API_KEY")),
 		LLMBaseURL:                     strings.TrimSpace(os.Getenv("MULTICA_LLM_BASE_URL")),
@@ -1515,6 +1518,9 @@ func NewRouterWithOptions(pool *pgxpool.Pool, hub *realtime.Hub, bus *events.Bus
 	r.With(authRL).Post("/auth/send-code", h.SendCode)
 	r.With(authVerifyRL).Post("/auth/verify-code", h.VerifyCode)
 	r.With(authRL).Post("/auth/google", h.GoogleLogin)
+	// Owner password sign-in enforces its own PostgreSQL-backed attempt cap
+	// (fails closed) in addition to the Redis per-IP limiter (fails open).
+	r.With(authRL).Post("/auth/password", h.PasswordLogin)
 	r.Post("/auth/logout", h.Logout)
 
 	// Public API

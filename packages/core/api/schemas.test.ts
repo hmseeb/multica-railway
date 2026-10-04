@@ -1,3 +1,4 @@
+// Modified for Railway owner-password authentication.
 import { describe, expect, it } from "vitest";
 import {
   AppConfigSchema,
@@ -1268,6 +1269,34 @@ describe("AppConfigSchema comment_delete_keep_replies_supported drift", () => {
       comment_delete_keep_replies_supported: value,
     });
     expect(parsed.comment_delete_keep_replies_supported).toBe(expected);
+  });
+});
+
+// Older servers omit the login capability flags: they offered email codes and
+// no owner password, so absent or malformed must parse that way.
+describe("AppConfigSchema login capability drift", () => {
+  it("defaults to email-code only when the server predates the flags", () => {
+    const parsed = AppConfigSchema.parse({});
+    expect(parsed.owner_password_login_enabled).toBe(false);
+    expect(parsed.email_login_enabled).toBe(true);
+  });
+
+  it("coerces malformed values to the legacy defaults", () => {
+    const parsed = AppConfigSchema.parse({
+      owner_password_login_enabled: "yes",
+      email_login_enabled: "no",
+    });
+    expect(parsed.owner_password_login_enabled).toBe(false);
+    expect(parsed.email_login_enabled).toBe(true);
+  });
+
+  it("carries owner-password-only declarations through", () => {
+    const parsed = AppConfigSchema.parse({
+      owner_password_login_enabled: true,
+      email_login_enabled: false,
+    });
+    expect(parsed.owner_password_login_enabled).toBe(true);
+    expect(parsed.email_login_enabled).toBe(false);
   });
 });
 

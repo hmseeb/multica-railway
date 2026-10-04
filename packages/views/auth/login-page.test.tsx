@@ -1,3 +1,4 @@
+// Modified for Railway owner-password authentication.
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, act } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -29,6 +30,8 @@ function renderWithI18n(ui: ReactElement) {
 
 const mockSendCode = vi.hoisted(() => vi.fn());
 const mockVerifyCode = vi.hoisted(() => vi.fn());
+const mockLoginWithPassword = vi.hoisted(() => vi.fn());
+const mockApiPasswordLogin = vi.hoisted(() => vi.fn());
 const mockApiListWorkspaces = vi.hoisted(() => vi.fn());
 const mockApiVerifyCode = vi.hoisted(() => vi.fn());
 const mockApiSetToken = vi.hoisted(() => vi.fn());
@@ -60,6 +63,7 @@ vi.mock("@multica/core/auth", () => ({
       getState: () => ({
         sendCode: mockSendCode,
         verifyCode: mockVerifyCode,
+        loginWithPassword: mockLoginWithPassword,
       }),
     },
   ),
@@ -69,6 +73,7 @@ vi.mock("@multica/core/api", () => ({
   api: {
     listWorkspaces: mockApiListWorkspaces,
     verifyCode: mockApiVerifyCode,
+    passwordLogin: mockApiPasswordLogin,
     setToken: mockApiSetToken,
     getMe: mockApiGetMe,
     issueCliToken: mockApiIssueCliToken,
@@ -82,6 +87,7 @@ vi.mock("@multica/core/types", () => ({}));
 // ---------------------------------------------------------------------------
 
 import { LoginPage, validateCliCallback } from "./login-page";
+import { configStore } from "@multica/core/config";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -774,5 +780,129 @@ describe("validateCliCallback", () => {
 
   it("rejects invalid URLs", () => {
     expect(validateCliCallback("not-a-url")).toBe(false);
+  });
+
+  // Regression: a prefix check accepted DNS names that merely start with a
+  // private-range prefix, sending the CLI token to an attacker-controlled host.
+  it("rejects hostnames that only look like private IPs", () => {
+    expect(validateCliCallback("http://10.attacker.example/callback")).toBe(false);
+    expect(validateCliCallback("http://10.0.0.1.attacker.example:9876/cb")).toBe(false);
+    expect(validateCliCallback("http://172.16.evil.example/cb")).toBe(false);
+    expect(validateCliCallback("http://192.168.attacker.example/cb")).toBe(false);
+    expect(validateCliCallback("http://localhost.attacker.example/cb")).toBe(false);
+    expect(validateCliCallback("http://127.0.0.1.attacker.example/cb")).toBe(false);
+  });
+
+  it("still accepts local CLI destinations", () => {
+    expect(validateCliCallback("http://localhost:9876/callback")).toBe(true);
+    expect(validateCliCallback("http://127.0.0.1:9876/callback")).toBe(true);
+    expect(validateCliCallback("http://10.0.0.5:41117/callback")).toBe(true);
+  });
+});
+
+describe("LoginPage owner password", () => {
+  const onSuccess = vi.fn();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockAuthState.expired = false;
+    mockApiGetMe.mockRejectedValue(new Error("unauthorized"));
+    localStorage.clear();
+    Object.defineProperty(window, "location", {
+      writable: true,
+      value: { href: "http://localhost:3000" },
+    });
+    configStore.setState({ ownerPasswordLoginEnabled: true, emailLoginEnabled: false });
+  });
+
+  afterEach(() => {
+    configStore.setState({ ownerPasswordLoginEnabled: false, emailLoginEnabled: true });
+  });
+
+  it("renders labelled email and password fields and hides email codes when unavailable", () => {
+    renderWithI18n(<LoginPage onSuccess={onSuccess} />);
+    expect(screen.getByLabelText("Email")).toHaveAttribute("autocomplete", "username");
+    const password = screen.getByLabelText("Password");
+    expect(password).toHaveAttribute("type", "password");
+    expect(password).toHaveAttribute("autocomplete", "current-password");
+    expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /email me a sign-in code/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/login code/i)).not.toBeInTheDocument();
+  });
+
+  it("signs in, seeds workspaces and calls onSuccess", async () => {
+    const user = userEvent.setup();
+    mockLoginWithPassword.mockResolvedValue({ id: "u1" });
+    mockApiListWorkspaces.mockResolvedValue([{ id: "ws1" }]);
+    const onTokenObtained = vi.fn();
+    renderWithI18n(<LoginPage onSuccess={onSuccess} onTokenObtained={onTokenObtained} />);
+
+    await user.type(screen.getByLabelText("Email"), "owner@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() => expect(onSuccess).toHaveBeenCalled());
+    expect(mockLoginWithPassword).toHaveBeenCalledWith("owner@example.com", "correct horse battery staple");
+    expect(mockSetQueryData).toHaveBeenCalledWith(expect.anything(), [{ id: "ws1" }]);
+    expect(onTokenObtained).toHaveBeenCalled();
+    expect(mockSendCode).not.toHaveBeenCalled();
+  });
+
+  it("shows the server error and clears the password on failure", async () => {
+    const user = userEvent.setup();
+    mockLoginWithPassword.mockRejectedValue(new Error("invalid email or password"));
+    renderWithI18n(<LoginPage onSuccess={onSuccess} />);
+
+    await user.type(screen.getByLabelText("Email"), "owner@example.com");
+    await user.type(screen.getByLabelText("Password"), "wrong password value");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    expect(await screen.findByText("invalid email or password")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toHaveValue("");
+    expect(onSuccess).not.toHaveBeenCalled();
+  });
+
+  it("hands the token to the CLI callback", async () => {
+    const user = userEvent.setup();
+    mockApiPasswordLogin.mockResolvedValue({ token: "tok-1", user: { id: "u1" } });
+    renderWithI18n(
+      <LoginPage
+        onSuccess={onSuccess}
+        cliCallback={{ url: "http://localhost:9876/callback", state: "abc" }}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("Email"), "owner@example.com");
+    await user.type(screen.getByLabelText("Password"), "correct horse battery staple");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+
+    await waitFor(() =>
+      expect(window.location.href).toBe("http://localhost:9876/callback?token=tok-1&state=abc"),
+    );
+    expect(mockApiSetToken).toHaveBeenCalledWith("tok-1");
+    expect(mockLoginWithPassword).not.toHaveBeenCalled();
+  });
+
+  it("offers email codes as an alternative only when email login is configured", async () => {
+    const user = userEvent.setup();
+    configStore.setState({ emailLoginEnabled: true });
+    mockSendCode.mockResolvedValue(undefined);
+    renderWithI18n(<LoginPage onSuccess={onSuccess} />);
+
+    await user.click(screen.getByRole("button", { name: /email me a sign-in code/i }));
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    await user.type(screen.getByLabelText("Email"), "owner@example.com");
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    await waitFor(() => expect(mockSendCode).toHaveBeenCalledWith("owner@example.com"));
+
+    expect(screen.getByText(/check your email/i)).toBeInTheDocument();
+  });
+
+  it("keeps the legacy email form when owner password is not enabled", () => {
+    configStore.setState({ ownerPasswordLoginEnabled: false, emailLoginEnabled: true });
+    renderWithI18n(<LoginPage onSuccess={onSuccess} />);
+    expect(screen.queryByLabelText("Password")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continue" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sign-in code|with password/i })).not.toBeInTheDocument();
   });
 });

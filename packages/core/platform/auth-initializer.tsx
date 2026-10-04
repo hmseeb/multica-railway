@@ -1,4 +1,5 @@
 "use client";
+// Modified for Railway owner-password authentication.
 
 import { useCallback, useEffect, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -75,6 +76,9 @@ export function AuthInitializer({
           workspaceCreationDisabled: cfg.workspace_creation_disabled === true,
           // Absent/false on the managed cloud and older servers → section hidden.
           vcsIntegrationAvailable: cfg.vcs_integration_available === true,
+          // Absent on older servers: no owner password, email sign-in on.
+          ownerPasswordLoginEnabled: cfg.owner_password_login_enabled === true,
+          emailLoginEnabled: cfg.email_login_enabled !== false,
         });
         configStore.getState().setDaemonConfig({
           daemonServerUrl: cfg.daemon_server_url,
