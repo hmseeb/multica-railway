@@ -1,5 +1,9 @@
 -- Modified for Railway owner-password authentication.
 --
+-- Numbered 9000, outside upstream's range, so upstream releases never collide
+-- with it (it was 535 on v0.5.1; every statement is idempotent, so DBs that
+-- already applied 535_owner_password_auth re-run it as a no-op).
+--
 -- owner_bootstrap is a durable singleton: the first server start that sees
 -- MULTICA_OWNER_EMAIL/MULTICA_OWNER_PASSWORD writes exactly one row and no
 -- later start ever rewrites it. 'owner_created' carries the owner's password

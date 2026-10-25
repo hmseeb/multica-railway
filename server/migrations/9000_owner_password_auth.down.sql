@@ -8,7 +8,7 @@
 DO $$
 BEGIN
     IF to_regclass('owner_bootstrap') IS NOT NULL AND EXISTS (SELECT 1 FROM owner_bootstrap) THEN
-        RAISE EXCEPTION 'refusing to roll back 535_owner_password_auth: owner_bootstrap holds the owner credential or bootstrap marker; rolling back would permanently disable owner password sign-in. Keep this migration applied, or back up and delete the owner_bootstrap row first if you intend to remove owner-password authentication.';
+        RAISE EXCEPTION 'refusing to roll back 9000_owner_password_auth: owner_bootstrap holds the owner credential or bootstrap marker; rolling back would permanently disable owner password sign-in. Keep this migration applied, or back up and delete the owner_bootstrap row first if you intend to remove owner-password authentication.';
     END IF;
 END $$;
 
