@@ -21,7 +21,7 @@ const EnvDatabaseURL = "MULTICA_OWNER_TEST_DATABASE_URL"
 
 // Schema is an isolated schema holding empty copies of "user" and workspace
 // (LIKE the migrated public tables) plus the owner tables created by the real
-// 535 migration. Unqualified names resolve here first, then to public.
+// 9000 migration. Unqualified names resolve here first, then to public.
 type Schema struct {
 	Name string
 	url  string
@@ -66,16 +66,16 @@ func New(t testing.TB) *Schema {
 
 	pool := s.Pool(t)
 	if _, err := pool.Exec(ctx, MigrationSQL(t, "up")); err != nil {
-		t.Fatalf("apply 535 migration in test schema: %v", err)
+		t.Fatalf("apply 9000 migration in test schema: %v", err)
 	}
 	return s
 }
 
-// MigrationSQL returns the real 535 migration file for direction "up"/"down".
+// MigrationSQL returns the real 9000 migration file for direction "up"/"down".
 func MigrationSQL(t testing.TB, direction string) string {
 	t.Helper()
 	_, file, _, _ := runtime.Caller(0)
-	sql, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..", "migrations", "535_owner_password_auth."+direction+".sql"))
+	sql, err := os.ReadFile(filepath.Join(filepath.Dir(file), "..", "..", "..", "migrations", "9000_owner_password_auth."+direction+".sql"))
 	if err != nil {
 		t.Fatal(err)
 	}

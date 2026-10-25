@@ -290,7 +290,7 @@ func TestDownMigrationRefusesToDropMarker(t *testing.T) {
 				t.Fatalf("bootstrap = %+v, %v", res, err)
 			}
 			_, err := pool.Exec(ctx, down)
-			if err == nil || !strings.Contains(err.Error(), "refusing to roll back 535_owner_password_auth") {
+			if err == nil || !strings.Contains(err.Error(), "refusing to roll back 9000_owner_password_auth") {
 				t.Fatalf("down migration error = %v", err)
 			}
 			if !tableExists(t, pool, schema.Name) {
