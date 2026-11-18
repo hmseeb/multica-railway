@@ -747,9 +747,6 @@ importers:
       '@multica/core':
         specifier: workspace:*
         version: link:../../packages/core
-      '@multica/ee':
-        specifier: workspace:*
-        version: link:../../packages/ee
       '@multica/ui':
         specifier: workspace:*
         version: link:../../packages/ui
