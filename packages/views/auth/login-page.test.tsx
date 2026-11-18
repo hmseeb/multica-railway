@@ -811,6 +811,7 @@ describe("LoginPage owner password", () => {
   const onSuccess = vi.fn();
 
   beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.clearAllMocks();
     mockAuthState.expired = false;
     mockApiGetMe.mockRejectedValue(new Error("unauthorized"));
@@ -824,6 +825,7 @@ describe("LoginPage owner password", () => {
 
   afterEach(() => {
     configStore.setState({ ownerPasswordLoginEnabled: false, emailLoginEnabled: true });
+    vi.useRealTimers();
   });
 
   it("renders labelled email and password fields and hides email codes when unavailable", () => {
@@ -903,6 +905,13 @@ describe("LoginPage owner password", () => {
     await waitFor(() => expect(mockSendCode).toHaveBeenCalledWith("owner@example.com"));
 
     expect(screen.getByText(/check your email/i)).toBeInTheDocument();
+  });
+
+  // The verify step mounts input-otp, whose setTimeout can fire after jsdom is
+  // torn down ("window is not defined") on a loaded CI runner. Fake timers, as
+  // in the upstream LoginPage suite, drop those timers with the test.
+  it("runs under fake timers so input-otp timers cannot outlive the test", () => {
+    expect(vi.isFakeTimers()).toBe(true);
   });
 
   it("keeps the legacy email form when owner password is not enabled", () => {
